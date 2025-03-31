@@ -8,36 +8,75 @@ import LoginHeader from "../components/Header";
 import InputField from "../components/Input";
 import LoginFormContainer from "../components/LoginFormContainer";
 
-// Zod Schema for validation
+// Individual field schemas for validation
+const emailSchema = z
+  .string()
+  .min(1, "Email is required")
+  .email("Please enter a valid email address");
+
+const passwordSchema = z
+  .string()
+  .min(1, "Password is required")
+  .min(6, "Password must be at least 6 characters");
+
+// Combined schema for form validation
 const loginSchema = z.object({
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: emailSchema,
+  password: passwordSchema,
 });
 
+// Type inference from the Zod schema
+type LoginFormData = z.infer<typeof loginSchema>;
+type LoginFormErrors = Partial<Record<keyof LoginFormData, string>>;
+
 const LoginForm: React.FC = () => {
-  const [formData, setFormData] = useState({ email: "", password: "" });
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [formData, setFormData] = useState<LoginFormData>({ email: "", password: "" });
+  const [errors, setErrors] = useState<LoginFormErrors>({});
   const [showPassword, setShowPassword] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.id]: e.target.value });
-    setErrors((prev) => ({ ...prev, [e.target.id]: undefined })); // Clear field-specific errors
+    const { id, value } = e.target;
+    setFormData((prev) => ({ ...prev, [id]: value }));
+    
+    // Clear field error on change
+    setErrors((prev) => ({ ...prev, [id]: undefined }));
   };
 
-  const validateForm = () => {
-    const result = loginSchema.safeParse(formData);
-    if (!result.success) {
-      const formattedErrors = result.error.format();
-      setErrors({
-        email: formattedErrors.email?._errors[0],
-        password: formattedErrors.password?._errors[0],
-      });
+  const handleBlur = (field: keyof LoginFormData) => {
+    try {
+      if (field === "email") {
+        emailSchema.parse(formData.email);
+      } else if (field === "password") {
+        passwordSchema.parse(formData.password);
+      }
+      setErrors((prev) => ({ ...prev, [field]: undefined }));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        setErrors((prev) => ({ ...prev, [field]: error.errors[0]?.message }));
+      }
+    }
+  };
+
+  const validateForm = (): boolean => {
+    try {
+      loginSchema.parse(formData);
+      setErrors({});
+      return true;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        // Format and set the errors
+        const formattedErrors: LoginFormErrors = {};
+        error.errors.forEach((err) => {
+          const path = err.path[0] as keyof LoginFormData;
+          formattedErrors[path] = err.message;
+        });
+        setErrors(formattedErrors);
+      }
       return false;
     }
-    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -50,10 +89,32 @@ const LoginForm: React.FC = () => {
 
     try {
       const response = await apiClient.post("/users/login", formData);
-      localStorage.setItem("token", response.data.token);
-      navigate("/dashboard"); // Redirect after login
+      
+      if (response.data?.token) {
+        localStorage.setItem("token", response.data.token);
+        navigate("/dashboard");
+      } else {
+        throw new Error("No token received from server");
+      }
     } catch (err: any) {
-      setApiError(err.response?.data?.message || "An error occurred. Please try again.");
+      // More detailed API error handling
+      if (err.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        if (err.response.status === 401) {
+          setApiError("Invalid email or password");
+        } else if (err.response.status === 429) {
+          setApiError("Too many login attempts. Please try again later.");
+        } else {
+          setApiError(err.response.data?.message || `Server error (${err.response.status})`);
+        }
+      } else if (err.request) {
+        // The request was made but no response was received
+        setApiError("No response from server. Please check your internet connection.");
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        setApiError(err.message || "An unexpected error occurred");
+      }
     } finally {
       setLoading(false);
     }
@@ -63,35 +124,76 @@ const LoginForm: React.FC = () => {
     <LoginFormContainer>
       <LoginHeader title="Welcome back!" />
       <form onSubmit={handleSubmit} className="space-y-4">
-        <InputField
-          id="email"
-          type="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-        />
-        {errors.email && <p className="text-red-500">{errors.email}</p>}
-
-        <div className="relative">
+        <div>
           <InputField
-            id="password"
-            type={showPassword ? "text" : "password"}
-            placeholder="Password"
-            value={formData.password}
+            id="email"
+            type="email"
+            placeholder="Email"
+            value={formData.email}
             onChange={handleChange}
+            onBlur={() => handleBlur("email")}
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "email-error" : undefined}
           />
-          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2.5 text-gray-500">
-            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-          </button>
+          {errors.email && (
+            <p id="email-error" className="text-red-500 text-sm mt-1">
+              {errors.email}
+            </p>
+          )}
         </div>
-        {errors.password && <p className="text-red-500">{errors.password}</p>}
 
-        {apiError && <p className="text-red-600">{apiError}</p>}
+        <div>
+          <div className="relative">
+            <InputField
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              onBlur={() => handleBlur("password")}
+              aria-invalid={!!errors.password}
+              aria-describedby={errors.password ? "password-error" : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-2.5 text-gray-500 focus:outline-none"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+          {errors.password && (
+            <p id="password-error" className="text-red-500 text-sm mt-1">
+              {errors.password}
+            </p>
+          )}
+        </div>
 
-        <Button text={loading ? "Logging in..." : "Login"} type="submit" disabled={loading} />
+        {apiError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {apiError}
+          </div>
+        )}
+
+        <Button
+          text={loading ? "Logging in..." : "Login"}
+          type="submit"
+          disabled={loading}
+        />
       </form>
+
+      <div className="mt-4 text-center">
+        <a href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+          Forgot password?
+        </a>
+      </div>
+
       <p className="text-sm pt-6 text-center text-gray-800">
-        Don't have an account? <a href="/signup">Signup</a>
+        Don't have an account?{" "}
+        <a href="/signup" className="text-blue-600 hover:underline">
+          Sign up
+        </a>
       </p>
     </LoginFormContainer>
   );
