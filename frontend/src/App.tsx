@@ -1,18 +1,21 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './pages/Login';
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import LoginForm from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import ProtectedRoute from "./ProtectedRoute";
+import SignupForm from "./pages/Signup";
 
-const App: React.FC = () => {
+const App = () => {
   return (
-    <div>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </Router>
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/login" element={<LoginForm />} />
+        <Route path="/signup" element={<SignupForm />} />
+        <Route element={<ProtectedRoute />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/login" />} />
+      </Routes>
+    </Router>
   );
 };
 

@@ -9,12 +9,12 @@ import InputField from "../components/Input";
 import LoginFormContainer from "../components/LoginFormContainer";
 
 // Zod Schema for validation
-const loginSchema = z.object({
+const signupSchema = z.object({
   email: z.string().email("Invalid email format"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-const LoginForm: React.FC = () => {
+const SignupForm: React.FC = () => {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [showPassword, setShowPassword] = useState(false);
@@ -28,7 +28,7 @@ const LoginForm: React.FC = () => {
   };
 
   const validateForm = () => {
-    const result = loginSchema.safeParse(formData);
+    const result = signupSchema.safeParse(formData);
     if (!result.success) {
       const formattedErrors = result.error.format();
       setErrors({
@@ -49,11 +49,10 @@ const LoginForm: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await apiClient.post("/users/login", formData);
-      localStorage.setItem("token", response.data.token);
-      navigate("/dashboard"); // Redirect after login
+      await apiClient.post("/users/register", formData);
+      navigate("/login"); // Redirect after successful signup
     } catch (err: any) {
-      setApiError(err.response?.data?.message || "An error occurred. Please try again.");
+      setApiError(err.response?.data?.message || "Signup failed!");
     } finally {
       setLoading(false);
     }
@@ -61,7 +60,7 @@ const LoginForm: React.FC = () => {
 
   return (
     <LoginFormContainer>
-      <LoginHeader title="Welcome back!" />
+      <LoginHeader title="Create an Account" />
       <form onSubmit={handleSubmit} className="space-y-4">
         <InputField
           id="email"
@@ -88,13 +87,13 @@ const LoginForm: React.FC = () => {
 
         {apiError && <p className="text-red-600">{apiError}</p>}
 
-        <Button text={loading ? "Logging in..." : "Login"} type="submit" disabled={loading} />
+        <Button text={loading ? "Signing up..." : "Sign Up"} type="submit" disabled={loading} />
       </form>
       <p className="text-sm pt-6 text-center text-gray-800">
-        Don't have an account? <a href="/signup">Signup</a>
+        Already have an account? <a href="/login">Login</a>
       </p>
     </LoginFormContainer>
   );
 };
 
-export default LoginForm;
+export default SignupForm;
